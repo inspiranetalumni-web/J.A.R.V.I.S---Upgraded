@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "python",
+      "args": ["-m", "jarvis.filesystem.operations"],
+      "enabled": true
+    },
+    "n8n": {
+      "command": "python",
+      "args": ["-m", "jarvis.workflows.n8n_deployer"],
+      "enabled": true
+    }
+  }
+}
