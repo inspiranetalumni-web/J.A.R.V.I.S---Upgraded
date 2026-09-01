@@ -47,6 +47,9 @@ class DynamicSystemConfig:
         # Calculated RAM Allocation Ceiling (Leaves 1.5 GB for OS)
         self.ram_ceiling_gb = max(4.0, round(self.total_ram_gb - 1.5, 2))
 
+        # 4. Feature Flags & UI Config
+        self.enable_control_center = os.getenv("JARVIS_ENABLE_CONTROL_CENTER", "true").lower() in ("1", "true", "yes")
+
     def _discover_lan_ip(self) -> str:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
@@ -75,7 +78,8 @@ class DynamicSystemConfig:
             "cpu_topology": f"{self.cpu_physical} Physical / {self.cpu_logical} Logical",
             "ram_total_gb": self.total_ram_gb,
             "ram_available_gb": self.available_ram_gb,
-            "ram_ceiling_gb": self.ram_ceiling_gb
+            "ram_ceiling_gb": self.ram_ceiling_gb,
+            "enable_control_center": self.enable_control_center
         }
 
 config = DynamicSystemConfig()

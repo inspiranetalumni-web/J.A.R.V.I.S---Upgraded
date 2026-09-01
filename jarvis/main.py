@@ -55,8 +55,9 @@ async def lifespan(app: FastAPI):
 
         def _on_transcript(text: str):
             print(f"[LAPTOP VOICE INTAKE] Transcribed: '{text}'")
-            res = conv_agent.process_message(text)
-            audio_mgr.speak(res)
+            # Stream clause-buffered responses into the audio manager
+            clauses = conv_agent.stream_response(text, cancel_event=audio_mgr.cancel_token)
+            audio_mgr.speak_stream(clauses)
 
         audio_mgr.register_on_utterance_callback(_on_transcript)
         audio_mgr.start_mic_listener()
@@ -423,14 +424,69 @@ async def stark_human_validation(payload: dict):
     approved = payload.get("approved", False)
     return stark_hacking_engine.human_validation_escrow(op, approved)
 
+# --- Lightweight Fast Command Router (< 1ms Intent Matching) ---
+from jarvis.system.command_router import command_router
 
+@app.post("/api/v1/system/command/fast")
+async def execute_fast_command(payload: dict):
+    """Executes sub-millisecond intent matching for common voice and system commands."""
+    cmd = payload.get("command", "")
+    confirmed = payload.get("confirmed", False)
+    return command_router.execute(cmd, user_confirmed=confirmed)
 
+# --- CPU Survival & Performance Mode Governor ---
+from jarvis.system.cpu_survival import cpu_survival_manager
 
+@app.get("/api/v1/system/survival")
+async def get_survival_telemetry():
+    """Returns CPU Survival telemetry, active performance profile, and CPU utilization."""
+    return cpu_survival_manager.get_telemetry()
 
+@app.post("/api/v1/system/survival/set_mode")
+async def set_survival_mode(payload: dict):
+    """Sets performance mode: TURBO, BALANCED, or SURVIVAL."""
+    mode = payload.get("mode", "BALANCED")
+    success = cpu_survival_manager.set_mode(mode)
+    if not success:
+        raise HTTPException(status_code=400, detail=f"Invalid performance mode '{mode}'. Choose from TURBO, BALANCED, SURVIVAL.")
+    return {
+        "status": "mode_updated",
+        "mode": cpu_survival_manager.mode,
+        "profile": cpu_survival_manager.get_profile()
+    }
 
+# --- AST Code Graph & Graphify Engine Endpoints ---
+from jarvis.analysis.code_graph import code_graph_engine
 
+@app.get("/api/v1/graph/topology")
+async def get_graph_topology():
+    """Returns high-level graph topology metrics, clusters, and total AST nodes."""
+    return code_graph_engine.get_topological_summary()
 
+@app.get("/api/v1/graph/nodes")
+async def get_graph_nodes():
+    """Returns all extracted AST code nodes in the repository."""
+    return [node.to_dict() for node in code_graph_engine.nodes.values()]
 
+@app.get("/api/v1/graph/blast_radius")
+async def get_node_blast_radius(node_id: str):
+    """Calculates downstream dependencies and incoming callers for impact analysis."""
+    if node_id not in code_graph_engine.nodes:
+        # Try finding prefix/partial match
+        for n in code_graph_engine.nodes:
+            if node_id.lower() in n.lower():
+                node_id = n
+                break
+    return code_graph_engine.get_blast_radius(node_id)
+
+@app.post("/api/v1/graph/rebuild")
+async def rebuild_code_graph():
+    """Triggers real-time AST re-scanning and graphification of the repository."""
+    code_graph_engine.rebuild_graph()
+    return {
+        "status": "rebuilt",
+        "topology": code_graph_engine.get_topological_summary()
+    }
 
 def _perform_shutdown():
     time.sleep(1)

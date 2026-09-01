@@ -96,6 +96,22 @@ Indexes **100+ Core Computer Science Acronyms** across 5 domains:
 - **7-Stage AI Mastery Curriculum (`jarvis/learning/curriculum_engine.py`):** Guided learning path from RAG foundations to Fine-Tuning and Autonomous Swarms.
 - **MCP Auto-Detector (`jarvis/mcp/auto_detector.py`):** Scans tool registries with 100% offline privacy guardrail.
 
+### G. AST Code Graph & Graphify Engine (`jarvis/analysis/code_graph.py`)
+- **Sovereign AST Pipeline:** Extracts 100% real repository metadata (classes, methods, top-level functions with arguments, docstrings, line counts, and byte sizes) with zero mock data.
+- **3D Clustered Spherical Fibonacci Projection:** Positions code nodes into 6 functional spatial spheres (`Spine`, `Cognitive`, `Audio`, `Security`, `Memory`, `UI/HUD`).
+- **Blast Radius & Impact Analysis:** Computes inbound callers and outbound dependencies with instant risk rating.
+- **FastAPI Endpoints:** Exposes `/api/v1/graph/topology`, `/api/v1/graph/nodes`, `/api/v1/graph/blast_radius`, and `/api/v1/graph/rebuild`.
+
+### H. 3D Holographic Canvas & Control Center HUD (`jarvis/control_center/widgets/`)
+- **Interactive 3D Canvas (`voice_orb.py`):** Full-viewport rendering with 2D/3D camera navigation:
+  - *Left-Drag:* Free 3D Orbiting (Yaw / Pitch)
+  - *Right-Drag:* 2D Canvas Panning (`_pan_x, _pan_y`)
+  - *Scroll Wheel:* Cursor-Centered Smooth Zoom ($0.3\times$ to $5.0\times$)
+  - *Freeze on Hover:* Pauses auto-rotation during node inspection
+  - *Double-Click:* Node inspection modal / canvas camera reset
+- **AST Node Inspector Dialog (`code_graph_detail_dialog.py`):** Rich 4-tab modal showing Classes, Methods, Functions, Dependencies, and Inbound Blast Radius.
+- **Symmetrical 3-Column Top Bar (`top_bar.py`):** Left Brand Title, Centered Mode Selector Pill (`BALANCED`, `SURVIVAL`, `TURBO`, `AUTO`), and Right Sovereign Status + Live Clock.
+
 ---
 
 ## 4. Complete REST API Reference (FastAPI Spine `:8765`)
@@ -128,6 +144,10 @@ Indexes **100+ Core Computer Science Acronyms** across 5 domains:
 | | `POST` | `/api/v1/system/processing_mode` | Batch vs Stream processing selector |
 | | `POST` | `/api/v1/mcp/auto_detect` | Auto-detect online MCP tools with prompt |
 | | `GET` | `/api/v1/learning/curriculum` | 7-Stage AI Mastery Building Roadmap |
+| **Code Graph & AST** | `GET` | `/api/v1/graph/topology` | High-level AST topology and cluster stats |
+| | `GET` | `/api/v1/graph/nodes` | List of all extracted AST code nodes in repo |
+| | `GET` | `/api/v1/graph/blast_radius` | Impact analysis & downstream callers for node |
+| | `POST` | `/api/v1/graph/rebuild` | Real-time AST re-scanning and graphification |
 
 ---
 
@@ -135,6 +155,8 @@ Indexes **100+ Core Computer Science Acronyms** across 5 domains:
 
 | File | Domain / Topic |
 |---|---|
+| [`skills/code_graph_and_graphify_skills.md`](file:///e:/J.A.R.V.I.S%20-%20Upgraded/skills/code_graph_and_graphify_skills.md) | AST Code Graph, 3D Spherical Clusters, & Blast Radius Engine |
+| [`skills/control_center_hud_and_3d_canvas_skills.md`](file:///e:/J.A.R.V.I.S%20-%20Upgraded/skills/control_center_hud_and_3d_canvas_skills.md) | 3D Holographic Canvas Navigation, Symmetrical Top Bar & HUD |
 | [`skills/dynamic_task_workflows_skills.md`](file:///e:/J.A.R.V.I.S%20-%20Upgraded/skills/dynamic_task_workflows_skills.md) | 15 Dynamic Task Workflow Modes (PRD to Task-to-Skill) |
 | [`skills/cs_foundations_and_skills_engine.md`](file:///e:/J.A.R.V.I.S%20-%20Upgraded/skills/cs_foundations_and_skills_engine.md) | 100+ CS/AI/Web/DB/DevOps Acronyms & 4 Execution Pillars |
 | [`skills/llm_rag_agent_upgrade_skills.md`](file:///e:/J.A.R.V.I.S%20-%20Upgraded/skills/llm_rag_agent_upgrade_skills.md) | Cognitive Tiering & Permission-Gated Self-Upgrade Protocol |
