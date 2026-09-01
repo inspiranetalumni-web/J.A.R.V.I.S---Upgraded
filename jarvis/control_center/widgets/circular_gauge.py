@@ -22,7 +22,15 @@ class CircularGauge(QWidget):
     """
     Performance-optimized Next-Gen radial progress meter with cyber dial markings,
     metric-specific color logic, glowing lead nodes, and interactive hover feedback.
+    Pre-computes trigonometric angles to eliminate CPU paintEvent overhead.
     """
+    START_DEG = 225.0
+    TOTAL_SPAN = 270.0
+    TICK_COS_SIN = [
+        (math.cos(math.radians(225.0 - (i / 4.0) * 270.0)), math.sin(math.radians(225.0 - (i / 4.0) * 270.0)))
+        for i in range(5)
+    ]
+
     def __init__(self, title: str = "GAUGE", unit: str = "%", subtext: str = "",
                  min_val: float = 0.0, max_val: float = 100.0,
                  metric_type: str = "custom", parent=None):
@@ -72,6 +80,7 @@ class CircularGauge(QWidget):
             self._value = clamped
             self.update()
 
+    setValue = set_value
     value = Property(float, get_value, set_value)
 
     def set_charging(self, is_charging: bool):
@@ -177,27 +186,20 @@ class CircularGauge(QWidget):
         painter.drawEllipse(rect)
 
         # 2. Outer Calibration Dial Ticks (0%, 25%, 50%, 75%, 100%)
-        # Sweep is 270 degrees: from 225 deg (135 math angle) down clockwise to -45 deg
-        start_deg = 225.0
-        total_span = 270.0
         self._tick_pen.setColor(QColor(COLOR_CYAN if self._is_hovered else COLOR_CYAN_DIM))
         painter.setPen(self._tick_pen)
 
-        for i in range(5):
-            t_ratio = i / 4.0
-            cur_deg = start_deg - t_ratio * total_span
-            rad = math.radians(cur_deg)
-            r_out = radius + 5.5
-            r_in = radius + 2.5
-            x1 = center_x + r_out * math.cos(rad)
-            y1 = center_y - r_out * math.sin(rad)
-            x2 = center_x + r_in * math.cos(rad)
-            y2 = center_y - r_in * math.sin(rad)
-            painter.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+        r_out = radius + 5.5
+        r_in = radius + 2.5
+        for cos_a, sin_a in self.TICK_COS_SIN:
+            painter.drawLine(
+                QPointF(center_x + r_out * cos_a, center_y - r_out * sin_a),
+                QPointF(center_x + r_in * cos_a, center_y - r_in * sin_a)
+            )
 
         # 3. Background Track Arc (270 degrees sweep)
-        start_angle = 225 * 16
-        span_angle = -270 * 16
+        start_angle = int(self.START_DEG * 16)
+        span_angle = int(-self.TOTAL_SPAN * 16)
 
         self._track_pen.setColor(QColor(0, 240, 255, 45 if not self._is_hovered else 80))
         painter.setPen(self._track_pen)
@@ -214,7 +216,7 @@ class CircularGauge(QWidget):
 
             # Draw Glowing Lead End Node
             if ratio > 0.02:
-                lead_deg = start_deg - ratio * total_span
+                lead_deg = self.START_DEG - ratio * self.TOTAL_SPAN
                 lead_rad = math.radians(lead_deg)
                 node_x = center_x + radius * math.cos(lead_rad)
                 node_y = center_y - radius * math.sin(lead_rad)

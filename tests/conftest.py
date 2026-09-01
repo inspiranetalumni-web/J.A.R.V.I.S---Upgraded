@@ -1,5 +1,6 @@
 """
 tests/conftest.py — Shared Pytest fixtures for J.A.R.V.I.S. Test Suites
+Provides shared offscreen QApplication, isolated audio managers, and environment cleanup.
 """
 
 import pytest
@@ -12,3 +13,14 @@ def qapp():
     if app is None:
         app = QApplication(["pytest", "-platform", "offscreen"])
     yield app
+
+@pytest.fixture
+def clean_audio_manager():
+    """Provides an isolated AudioManager instance with clean thread teardown."""
+    from jarvis.audio.manager import AudioManager
+    manager = AudioManager()
+    yield manager
+    try:
+        manager.stop_mic_listener()
+    except Exception:
+        pass

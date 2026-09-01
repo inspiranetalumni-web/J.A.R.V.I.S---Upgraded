@@ -20,7 +20,7 @@ from jarvis.control_center.theme import (
     COLOR_TEXT_MUTED, COLOR_BORDER_CARD, FONT_FAMILY_MONO, FONT_FAMILY_UI
 )
 from jarvis.control_center.state import AssistantState, OperatingMode, state_manager
-from jarvis.control_center.telemetry import TelemetryWorker
+from jarvis.control_center.telemetry import TelemetryWorker, WebSocketTelemetryWorker
 from jarvis.control_center.developer_window import DeveloperInspectorWindow
 from jarvis.control_center.widgets.circular_gauge import CircularGauge
 from jarvis.control_center.widgets.voice_orb import VoiceOrbWidget
@@ -56,10 +56,26 @@ class JarvisControlCenterWindow(QMainWindow):
         self.telemetry_worker.spine_health_updated.connect(self._on_spine_health_updated)
         self.telemetry_worker.start()
 
+        # Initialize High-Speed 30 Hz WebSocket Telemetry & Spectrum Visualizer Stream
+        self.ws_worker = WebSocketTelemetryWorker()
+        self.ws_worker.spectrum_received.connect(self.voice_orb.set_spectrum_data)
+        self.ws_worker.persona_received.connect(self._on_persona_changed)
+        self.ws_worker.stress_received.connect(self.voice_orb.set_stress_level)
+        self.ws_worker.start()
+
         # Connect State Manager Signals
         state_manager.state_changed.connect(self._on_assistant_state_changed)
         state_manager.welcome_message_changed.connect(self.lbl_welcome.setText)
         state_manager.active_task_changed.connect(self.lbl_active_task.setText)
+        state_manager.persona_changed.connect(self._on_persona_changed)
+        state_manager.spectrum_updated.connect(self.voice_orb.set_spectrum_data)
+        state_manager.stress_updated.connect(self.voice_orb.set_stress_level)
+
+    def _on_persona_changed(self, persona_name: str, color: str):
+        """Updates voice orb, greeting label, and theme when persona is swapped."""
+        self.voice_orb.set_active_persona(persona_name, color)
+        self.lbl_welcome.setText(f"Active AI Persona: {persona_name}")
+        self.lbl_welcome.setStyleSheet(f"color: {color};")
 
     def _init_ui(self):
         root_widget = QWidget()
@@ -546,9 +562,11 @@ class JarvisControlCenterWindow(QMainWindow):
         dlg.exec()
 
     def closeEvent(self, event):
-        """Cleanly terminate telemetry thread and child windows upon window closure."""
+        """Cleanly terminate telemetry thread, websocket stream, and child windows upon window closure."""
         if hasattr(self, "telemetry_worker") and self.telemetry_worker.isRunning():
             self.telemetry_worker.stop()
+        if hasattr(self, "ws_worker") and self.ws_worker.isRunning():
+            self.ws_worker.stop()
         if hasattr(self, "dev_window") and self.dev_window.isVisible():
             self.dev_window.close()
         event.accept()

@@ -124,3 +124,25 @@ class SecurityGuardrails:
         Layer 4 Job Object Limit: Returns process sandboxing RAM ceiling (512 MB).
         """
         return 512
+
+    def enforce_process_memory_limit(self, pid: Optional[int] = None) -> bool:
+        """
+        Layer 4 Job Object Limit: Enforces hard 512MB RAM ceiling on target process handle.
+        """
+        target_pid = pid or os.getpid()
+        try:
+            import win32job
+            import win32api
+            import win32process
+
+            job = win32job.CreateJobObject(None, f"JarvisSandbox_{target_pid}")
+            info = win32job.QueryInformationJobObject(job, win32job.JobObjectExtendedLimitInformation)
+            info['BasicLimitInformation']['LimitFlags'] |= win32job.JOB_OBJECT_LIMIT_PROCESS_MEMORY
+            info['ProcessMemoryLimit'] = 512 * 1024 * 1024  # 512 MB
+            win32job.SetInformationJobObject(job, win32job.JobObjectExtendedLimitInformation, info)
+
+            h_proc = win32api.OpenProcess(win32process.PROCESS_ALL_ACCESS, False, target_pid)
+            win32job.AssignProcessToJobObject(job, h_proc)
+            return True
+        except Exception:
+            return False

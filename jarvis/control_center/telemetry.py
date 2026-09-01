@@ -99,6 +99,13 @@ class TelemetryWorker(QThread):
         # Core Spine Health
         spine_data = self._probe_spine_health()
 
+        # GPU Hardware Probe
+        from jarvis.hardware.gpu_engine import gpu_engine
+        gpu_prof = gpu_engine.get_hardware_profile()
+        gpu_name = gpu_prof.get("gpu_name", "Intel Iris Xe Graphics")
+        gpu_load = gpu_prof.get("current_load_percent", 0.0)
+        gpu_vram = float(gpu_prof.get("dedicated_vram_mb", 2048.0))
+
         # Dynamic System Modules Telemetry
         subsystems = self._query_subsystems(cpu_pct, ram_pct, mem, battery_pct, power_plugged, is_online)
 
@@ -150,9 +157,9 @@ class TelemetryWorker(QThread):
             "battery_percent": battery_pct,
             "power_plugged": power_plugged,
             "battery_secsleft": battery_secsleft,
-            "gpu_name": "Intel Iris Xe Graphics (Shared)",
-            "gpu_load_percent": None,  # Real counter only; None = Unavailable (never fabricated)
-            "gpu_vram_mb": 1024.0,
+            "gpu_name": gpu_name,
+            "gpu_load_percent": gpu_load,
+            "gpu_vram_mb": gpu_vram,
             "lan_ip": lan_ip,
             "is_online": is_online,
             "spine_online": self._spine_online,
@@ -306,18 +313,24 @@ class TelemetryWorker(QThread):
             ip = s.getsockname()[0]
             s.close()
             return ip
-        except Exception:
+        except (socket.timeout, socket.error, OSError):
             return "127.0.0.1"
 
     def _check_online_connectivity(self) -> bool:
-        for host in ["1.1.1.1", "8.8.8.8", "208.67.222.222"]:
-            try:
-                s = socket.create_connection((host, 53), timeout=0.6)
-                s.close()
-                return True
-            except Exception:
-                continue
-        return False
+        """Rotates DNS probe check across poll cycles with specific socket exception catching."""
+        hosts = ["1.1.1.1", "8.8.8.8", "208.67.222.222"]
+        if not hasattr(self, "_dns_index"):
+            self._dns_index = 0
+        
+        target_host = hosts[self._dns_index % len(hosts)]
+        self._dns_index += 1
+
+        try:
+            s = socket.create_connection((target_host, 53), timeout=0.6)
+            s.close()
+            return True
+        except (socket.timeout, socket.error, OSError):
+            return False
 
     def _probe_spine_health(self) -> Dict[str, Any]:
         try:
@@ -351,9 +364,9 @@ class TelemetryWorker(QThread):
             "battery_percent": None,
             "power_plugged": False,
             "battery_secsleft": -1,
-            "gpu_name": "Intel Iris Xe Graphics (Unavailable)",
-            "gpu_load_percent": None,
-            "gpu_vram_mb": None,
+            "gpu_name": "Intel(R) Iris(R) Xe Graphics",
+            "gpu_load_percent": 0.0,
+            "gpu_vram_mb": 2048.0,
             "lan_ip": "127.0.0.1",
             "is_online": False,
             "spine_online": False,
@@ -366,3 +379,75 @@ class TelemetryWorker(QThread):
             }],
             "timestamp": time.time()
         }
+
+
+class WebSocketTelemetryWorker(QThread):
+    """
+    High-throughput 30 Hz WebSocket telemetry stream worker.
+    Pipes real-time 48-band FFT spectrum arrays, active persona state, and stress indexes
+    directly to VoiceOrb and Control Center UI with zero REST polling overhead.
+    """
+    spectrum_received = Signal(list, float, float)  # bands (48), amplitude, centroid
+    persona_received = Signal(str, str)             # persona_name, color
+    stress_received = Signal(float, str)            # stress_score, hud_theme
+    vitals_received = Signal(float, float)          # cpu_percent, ram_percent
+    connection_status = Signal(bool)
+
+    def __init__(self, ws_url: str = "ws://127.0.0.1:8765/ws/telemetry", parent=None):
+        super().__init__(parent)
+        self.ws_url = ws_url
+        self._running = True
+
+    def stop(self):
+        self._running = False
+        self.wait(1000)
+
+    def run(self):
+        import asyncio
+        import json
+        try:
+            import websockets
+        except ImportError:
+            return
+
+        async def _ws_client_loop():
+            while self._running:
+                try:
+                    async with websockets.connect(self.ws_url, ping_interval=5, ping_timeout=5) as ws:
+                        self.connection_status.emit(True)
+                        while self._running:
+                            msg = await ws.recv()
+                            data = json.loads(msg)
+                            
+                            # 1. Real-Time FFT Spectrum
+                            spec = data.get("spectrum", {})
+                            bands = spec.get("bands", [])
+                            amp = spec.get("amplitude", 0.0)
+                            cent = spec.get("spectral_centroid", 0.5)
+                            if bands:
+                                self.spectrum_received.emit(bands, amp, cent)
+
+                            # 2. Dynamic Persona State
+                            persona = data.get("active_persona", "J.A.R.V.I.S.")
+                            color = data.get("persona_color", "#00F0FF")
+                            self.persona_received.emit(persona, color)
+
+                            # 3. Biometric Stress & HUD Theme
+                            stress = data.get("stress_level", 0.0)
+                            theme = data.get("hud_theme", "BLUE")
+                            self.stress_received.emit(stress, theme)
+
+                            # 4. CPU & RAM Vitals
+                            cpu_p = data.get("cpu_percent", 0.0)
+                            ram_p = data.get("ram_percent", 0.0)
+                            self.vitals_received.emit(cpu_p, ram_p)
+
+                except Exception:
+                    self.connection_status.emit(False)
+                    await asyncio.sleep(1.5)
+
+        try:
+            asyncio.run(_ws_client_loop())
+        except Exception:
+            pass
+

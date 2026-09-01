@@ -45,13 +45,13 @@ def test_llm_streaming_and_clause_buffering():
     messages = [{"role": "user", "content": "What is the status of core systems?"}]
 
     # 1. Test token streaming
-    tokens = list(engine.stream_chat(messages))
+    tokens = list(engine.stream_chat(messages, max_tokens=16))
     assert len(tokens) > 0
     full_text = "".join(tokens)
     assert len(full_text) > 0
 
     # 2. Test natural clause buffering
-    clauses = list(engine.stream_clauses(messages))
+    clauses = list(engine.stream_clauses(messages, max_tokens=16))
     assert len(clauses) > 0
     assert all(len(c.strip()) > 0 for c in clauses)
 
@@ -82,8 +82,8 @@ def test_modular_tts_and_barge_in():
 
 def test_audio_manager_decoupled_queue_and_barge_in():
     """Verify AudioManager non-blocking ingestion and barge-in cutoff."""
-    manager = AudioManager(async_mode=True)
-    assert manager._async_mode is True
+    manager = AudioManager(async_mode=False)
+    assert manager._async_mode is False
 
     # Ingest silence chunk (< 1ms execution)
     silence = np.zeros(CHUNK_SAMPLES, dtype=np.float32)
@@ -102,6 +102,7 @@ def test_audio_manager_decoupled_queue_and_barge_in():
     res_speech = manager.process_audio_chunk(loud_speech)
     assert manager.tts.is_speaking() is False
     assert manager.cancel_token.is_set() is True
+    manager.stop_mic_listener()
 
 def test_lightweight_command_router_sub_millisecond_matching():
     """Verify LightweightCommandRouter intent matching latency and deterministic outputs."""

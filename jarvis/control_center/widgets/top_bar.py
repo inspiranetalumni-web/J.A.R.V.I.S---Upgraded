@@ -5,6 +5,7 @@ online/offline network pill, live clock/date, and Model Info trigger in a perfec
 """
 
 import time
+from typing import Optional, Dict, Any
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QButtonGroup, QWidget
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFont, QMouseEvent
@@ -228,6 +229,14 @@ class TopBarWidget(QFrame):
         # Connect state manager signals
         state_manager.mode_changed.connect(self.set_active_mode)
         state_manager.online_status_changed.connect(self.set_online_status)
+        state_manager.persona_changed.connect(self.set_persona)
+
+    def set_persona(self, persona_name: str, accent_color: Optional[str] = None):
+        """Updates TopBar brand title and accent color dynamically when persona changes."""
+        color = accent_color or COLOR_CYAN
+        self.lbl_title.setText(f"{persona_name.upper()} CONTROL CENTER")
+        self.lbl_title.setStyleSheet(f"color: {color}; font-size: 13px; font-weight: bold; letter-spacing: 1.1px; background: transparent;")
+        self.lbl_clock.setStyleSheet(f"color: {color}; background: transparent; letter-spacing: 0.5px;")
 
     def _update_clock(self):
         now = time.localtime()

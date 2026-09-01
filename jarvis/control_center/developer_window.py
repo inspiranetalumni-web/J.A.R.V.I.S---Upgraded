@@ -871,13 +871,21 @@ class DeveloperInspectorWindow(QMainWindow):
         try:
             import urllib.request
             req = urllib.request.Request(f"http://127.0.0.1:8765{path}", headers={"User-Agent": "JARVIS-DevWindow"})
-            with urllib.request.urlopen(req, timeout=1.0) as response:
+            with urllib.request.urlopen(req, timeout=1.5) as response:
                 elapsed_ms = (time.perf_counter() - start_t) * 1000.0
                 status_code = response.getcode()
-                data = json.loads(response.read().decode())
+                raw_bytes = response.read()
+                raw_text = raw_bytes.decode("utf-8", errors="replace")
+                try:
+                    data = json.loads(raw_text)
+                    formatted_text = json.dumps(data, indent=2)
+                except Exception:
+                    # Non-JSON content (e.g. HTML dashboard from /mobile)
+                    formatted_text = raw_text
+
                 self.lbl_spine_status.setText(f"● HTTP {status_code} OK | Latency: {elapsed_ms:.1f} ms | Endpoint: {path}")
                 self.lbl_spine_status.setStyleSheet(f"color: {COLOR_EMERALD}; font-weight: bold; font-size: 11px;")
-                self.txt_spine_response.setPlainText(json.dumps(data, indent=2))
+                self.txt_spine_response.setPlainText(formatted_text)
         except Exception as e:
             elapsed_ms = (time.perf_counter() - start_t) * 1000.0
             self.lbl_spine_status.setText(f"⚠️ Error querying {path} ({elapsed_ms:.1f} ms)")

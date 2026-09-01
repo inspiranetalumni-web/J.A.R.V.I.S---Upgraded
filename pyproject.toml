@@ -1,0 +1,90 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jarvis"
+version = "3.0.0"
+description = "J.A.R.V.I.S. (Just A Rather Very Intelligent System) — 100% Local Sovereign AI Multi-Agent Operating System"
+readme = "AGENTS.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary / Local Sovereign" }
+authors = [
+    { name = "Dhamodran", email = "dhamo@local.jarvis" }
+]
+keywords = ["jarvis", "ai-assistant", "sovereign-ai", "local-llm", "pyside6", "fastapi", "voice-orb", "mcp"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Win32 (MS Windows)",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence"
+]
+
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic>=2.5.0",
+    "psutil>=5.9.0",
+    "requests>=2.31.0",
+    "httpx>=0.26.0",
+    "websockets>=12.0",
+    "numpy>=1.24.0",
+    "PySide6>=6.6.0"
+]
+
+[project.optional-dependencies]
+audio = [
+    "sounddevice>=0.4.6",
+    "faster-whisper>=1.0.0",
+    "onnxruntime>=1.16.0"
+]
+memory = [
+    "chromadb>=0.4.22"
+]
+browser = [
+    "playwright>=1.40.0"
+]
+windows = [
+    "pywin32>=306",
+    "comtypes>=1.2.0",
+    "wmi>=1.5.1"
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pyinstaller>=6.3.0"
+]
+all = [
+    "jarvis[audio,memory,browser,windows,dev]"
+]
+
+[project.scripts]
+jarvis = "jarvis.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["jarvis*"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+    "ignore::pytest.PytestConfigWarning",
+    "ignore:.*TestClient.*",
+    "ignore:.*httpx.*",
+    "ignore:.*Starlette.*"
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+exclude = [".git", ".venv", "build", "dist", "data"]

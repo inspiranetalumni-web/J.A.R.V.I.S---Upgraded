@@ -29,15 +29,32 @@ class OllamaEngine:
     def is_available(self, force_refresh: bool = False) -> bool:
         """
         Returns True if local Ollama daemon is reachable on http://127.0.0.1:11434.
-        Uses a dynamic TTL cache with fast 0.3s timeout to prevent UI/voice blocking.
+        Uses a micro-second socket probe + dynamic TTL cache to prevent UI/voice blocking.
         """
         now = time.time()
         if not force_refresh and (now - self._last_check_time) < self._cache_ttl:
             return self._cached_available
 
         try:
+            import socket
+            # Fast raw socket probe first (< 1ms)
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(0.05)
+            res = s.connect_ex(("127.0.0.1", 11434))
+            s.close()
+            if res != 0:
+                self._cached_available = False
+                self._last_check_time = now
+                return False
+
             r = requests.get(f"{self.endpoint}/api/tags", timeout=0.3)
-            self._cached_available = (r.status_code == 200)
+            if r.status_code == 200:
+                tags = r.json().get("models", [])
+                tag_names = [m.get("name", "") for m in tags]
+                # Available if default model or any local model is present
+                self._cached_available = any(self.default_model in name or "llama" in name or "qwen" in name for name in tag_names)
+            else:
+                self._cached_available = False
         except Exception:
             self._cached_available = False
 
@@ -112,7 +129,7 @@ class OllamaEngine:
         }
 
         try:
-            with requests.post(f"{self.endpoint}/api/chat", json=payload, stream=True, timeout=5) as r:
+            with requests.post(f"{self.endpoint}/api/chat", json=payload, stream=True, timeout=15) as r:
                 if r.status_code != 200:
                     yield from self._stream_fallback(user_message, cancel_event=cancel_event)
                     return
@@ -198,25 +215,16 @@ class OllamaEngine:
         return self.stream_chat(messages, model=model, temperature=temperature, cancel_event=cancel_event)
 
     def _generate_fallback(self, prompt: str) -> str:
-        """Generates Tony Stark J.A.R.V.I.S. persona response when local LLM is offline."""
-        prompt_lower = prompt.lower()
-        if "hello" in prompt_lower or "hi" in prompt_lower or "hey" in prompt_lower:
-            return "At your service, Sir. All core systems are nominal."
-        elif "status" in prompt_lower or "health" in prompt_lower:
-            return "Core spine is online at port 8765. Memory vault and audio engines operational."
-        elif "who are you" in prompt_lower:
-            return "I am J.A.R.V.I.S. — Just A Rather Very Intelligent System. Ready for your instructions, Sir."
-        else:
-            return f"Understood, Sir. Processing your request: '{prompt}'."
+        """Generates dynamic, intelligent, context-aware Stark AI response using local cognitive reasoner."""
+        from jarvis.llm.cognitive_reasoner import cognitive_reasoner
+        return cognitive_reasoner.analyze_and_respond(prompt)
 
     def _stream_fallback(self, prompt: str, cancel_event: Optional[threading.Event] = None) -> Iterator[str]:
-        """Yields fallback persona response formatted as natural speech clauses."""
+        """Yields dynamic cognitive persona response formatted as streamed tokens."""
         full_text = self._generate_fallback(prompt)
-        clauses = [c.strip() for c in re.split(r'(?<=[.!?,;:])\s+', full_text) if c.strip()]
-        if not clauses:
-            clauses = [full_text]
-
-        for clause in clauses:
+        words = full_text.split(" ")
+        for i, word in enumerate(words):
             if cancel_event and cancel_event.is_set():
                 break
-            yield clause
+            suffix = " " if i < len(words) - 1 else ""
+            yield word + suffix

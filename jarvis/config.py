@@ -26,6 +26,10 @@ class DynamicSystemConfig:
         self.vault_dir = Path(os.getenv("JARVIS_VAULT_DIR", self.data_dir / "vault"))
         self.user_home = Path.home()
 
+        # Backward/convenience aliases
+        self.log_dir = self.logs_dir
+        self.backup_dir = self.backups_dir
+
         # Create required directories dynamically
         for folder in [self.data_dir, self.logs_dir, self.backups_dir, self.vault_dir]:
             folder.mkdir(parents=True, exist_ok=True)

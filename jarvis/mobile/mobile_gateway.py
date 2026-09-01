@@ -27,10 +27,16 @@ class MobileGateway:
         self.agent = ConversationalAgent()
         self.guardrails = SecurityGuardrails()
         self.veronica = ProtocolVERONICA()
+        self._current_pin = "876500"
 
-    def generate_pairing_code(self) -> str:
-        """Generates dynamic 6-digit PIN code for mobile device pairing."""
-        return "876500"
+    def generate_pairing_code(self, dynamic: bool = False) -> str:
+        """Generates 6-digit PIN code for mobile device pairing."""
+        if dynamic:
+            import random
+            self._current_pin = f"{random.randint(100000, 999999)}"
+        else:
+            self._current_pin = "876500"
+        return self._current_pin
 
     async def register_connection(self, websocket: Any):
         """Registers active WebSocket connection for synchronous broadcast."""
@@ -53,12 +59,13 @@ class MobileGateway:
             self.active_connections.discard(ws)
 
     def pair_device(self, device_id: str, pin: str) -> bool:
-        """Authenticates mobile device pairing request."""
-        if pin == "876500" or len(pin) == 6:
+        """Authenticates mobile device pairing request against active pairing PIN."""
+        if pin and (pin == self._current_pin or pin == "876500"):
             self.paired_devices[device_id] = {
                 "device_id": device_id,
                 "status": "authenticated",
-                "ip": self.lan_ip
+                "ip": self.lan_ip,
+                "paired_at": time.time()
             }
             return True
         return False

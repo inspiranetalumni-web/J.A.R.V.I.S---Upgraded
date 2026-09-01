@@ -125,11 +125,56 @@ class VoiceOrbWidget(QWidget):
 
         # Peak indicators for 48 audio spectrum bars
         self._spectrum_peaks: List[float] = [0.0] * 48
+        self._live_bands: List[float] = [0.0] * 48
+        self._spectral_centroid: float = 0.5
+        
+        # Dynamic Persona & Biometric Themes
+        self._persona_name: str = "J.A.R.V.I.S."
+        self._persona_accent_color: Optional[str] = None
+        self._stress_level: float = 0.0
+        self._stress_color: Optional[str] = None
 
         # Dynamic Animation Timer: 15 FPS when Idle, 30 FPS Active, 45 FPS Hovered/Speaking
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._on_tick)
         self._timer.start(66)
+
+    def set_spectrum_data(self, bands: List[float], amplitude: float, centroid: float = 0.5):
+        """Ingests live 48-band FFT spectrum energy from physical audio/mic stream."""
+        if bands:
+            self._live_bands = list(bands)[:48]
+            if len(self._live_bands) < 48:
+                self._live_bands.extend([0.0] * (48 - len(self._live_bands)))
+        self._amplitude = max(0.0, min(1.0, float(amplitude)))
+        self._spectral_centroid = max(0.0, min(1.0, float(centroid)))
+        self.update()
+
+    def set_active_persona(self, persona_name: str, accent_color: Optional[str] = None):
+        """Dynamically updates active persona name (J.A.R.V.I.S., F.R.I.D.A.Y., E.D.I.T.H.) and color theme."""
+        p_clean = persona_name.upper().strip()
+        if "FRIDAY" in p_clean:
+            self._persona_name = "F.R.I.D.A.Y."
+            self._persona_accent_color = accent_color or "#FFB300"  # Stark Gold/Amber
+        elif "EDITH" in p_clean:
+            self._persona_name = "E.D.I.T.H."
+            self._persona_accent_color = accent_color or "#00FF88"  # Cyber Emerald
+        else:
+            self._persona_name = "J.A.R.V.I.S."
+            self._persona_accent_color = accent_color or "#00F0FF"  # Electric Cyan
+        self.update()
+
+    def set_stress_level(self, stress_score: float, hud_color: Optional[str] = None):
+        """Sets operator stress index (0.0 to 1.0) and HUD alarm color."""
+        self._stress_level = max(0.0, min(1.0, float(stress_score)))
+        if hud_color:
+            self._stress_color = hud_color
+        elif self._stress_level > 0.65:
+            self._stress_color = COLOR_VERONICA_RED
+        elif self._stress_level > 0.35:
+            self._stress_color = COLOR_AMBER
+        else:
+            self._stress_color = None
+        self.update()
 
     def set_display_mode(self, mode: OrbDisplayMode | str):
         """Switches between VOICE_ORB, CODE_GRAPH, and HYBRID modes."""
@@ -422,13 +467,19 @@ class VoiceOrbWidget(QWidget):
         # Enlarge base sphere size to fill 75% of viewport
         sphere_r = min(w, h) * 0.36
 
-        # State-based primary and glow colors
-        if self._state == AssistantState.ERROR:
+        # State and Persona based primary and glow colors
+        if self._stress_color:
+            primary_col = QColor(self._stress_color)
+            glow_col = QColor(self._stress_color)
+        elif self._state == AssistantState.ERROR:
             primary_col = QColor(COLOR_VERONICA_RED)
             glow_col = QColor(COLOR_VERONICA_RED)
         elif self._state == AssistantState.MUTED:
             primary_col = QColor(COLOR_AMBER)
             glow_col = QColor(COLOR_AMBER)
+        elif self._persona_accent_color:
+            primary_col = QColor(self._persona_accent_color)
+            glow_col = QColor(self._persona_accent_color)
         elif self._state in [AssistantState.SPEAKING, AssistantState.EXECUTING]:
             primary_col = QColor(COLOR_EMERALD)
             glow_col = QColor(COLOR_CYAN)
@@ -485,8 +536,8 @@ class VoiceOrbWidget(QWidget):
         pitch_deg = int(math.degrees(self._pitch))
 
         # Top-Left Telemetry Anchor
-        painter.drawText(QRectF(10, 10, 130, 12), Qt.AlignmentFlag.AlignLeft, f"YAW: {yaw_deg:03d}°  PITCH: {pitch_deg:+03d}°")
-        painter.drawText(QRectF(10, 24, 130, 12), Qt.AlignmentFlag.AlignLeft, f"ZOOM: {self._zoom_scale:.2f}x  // SPHERE")
+        painter.drawText(QRectF(10, 10, 140, 12), Qt.AlignmentFlag.AlignLeft, f"YAW: {yaw_deg:03d}°  PITCH: {pitch_deg:+03d}°")
+        painter.drawText(QRectF(10, 24, 140, 12), Qt.AlignmentFlag.AlignLeft, f"PERSONA: {self._persona_name} // {self._state.value.upper()}")
 
         # Top-Right Telemetry Anchor
         mode_str = f"MODE: {self._display_mode.value}"
@@ -537,12 +588,15 @@ class VoiceOrbWidget(QWidget):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawEllipse(QPointF(center_x, center_y), core_r, core_r)
 
-        # 7. State Text Badge (Only rendered in Voice Orb mode)
+        # 7. State & Dynamic Persona Text Badge (Only rendered in Voice Orb mode)
         if self._display_mode == OrbDisplayMode.VOICE_ORB:
             painter.setFont(self._font_center)
             painter.setPen(QColor("#ffffff" if self._is_hovered else COLOR_TEXT_PRIMARY))
-            state_text = self._state.value.upper()
-            painter.drawText(QRectF(center_x - 50, center_y - 10, 100, 20), Qt.AlignmentFlag.AlignCenter, state_text)
+            painter.drawText(QRectF(center_x - 70, center_y - 14, 140, 16), Qt.AlignmentFlag.AlignCenter, self._persona_name)
+            painter.setFont(self._font_micro)
+            painter.setPen(QColor(primary_col.red(), primary_col.green(), primary_col.blue(), 210))
+            state_sub = self._state.value.upper()
+            painter.drawText(QRectF(center_x - 60, center_y + 3, 120, 12), Qt.AlignmentFlag.AlignCenter, state_sub)
 
         # 8. Docked Non-Overlapping Bottom Hover Tooltip Card
         if self._hovered_node_id and self._hovered_node_id in code_graph_engine.nodes:
@@ -556,7 +610,14 @@ class VoiceOrbWidget(QWidget):
         num_bars = 48
         for i in range(num_bars):
             ang = (i / float(num_bars)) * math.pi * 2.0 + self._yaw * 0.4
-            cur_h = 2.5 + self._amplitude * 14.0 * (0.5 + 0.5 * math.sin(self._time_sec * 6.0 + i * 0.55))
+            
+            # Use real 48-band FFT energy if available, otherwise gentle idle waveform
+            band_energy = self._live_bands[i] if i < len(self._live_bands) else 0.0
+            if band_energy > 0.02 or self._amplitude > 0.04:
+                cur_h = 2.0 + (band_energy * 26.0 + self._amplitude * 10.0) * self._zoom_scale
+            else:
+                cur_h = 2.0 + (0.5 + 0.5 * math.sin(self._time_sec * 3.5 + i * 0.45)) * 2.8 * self._zoom_scale
+
             r_inner = sphere_r * self._zoom_scale * 1.05
             r_outer = r_inner + cur_h
             
@@ -565,15 +626,18 @@ class VoiceOrbWidget(QWidget):
             bx2 = center_x + r_outer * math.cos(ang)
             by2 = center_y + r_outer * math.sin(ang)
             
-            b_alpha = max(0, min(255, int(85 + 155 * (cur_h / 16.5))))
-            painter.setPen(QPen(QColor(primary_col.red(), primary_col.green(), primary_col.blue(), b_alpha), 1.5))
+            b_alpha = max(0, min(255, int(90 + 165 * min(1.0, cur_h / (28.0 * self._zoom_scale)))))
+            painter.setPen(QPen(QColor(primary_col.red(), primary_col.green(), primary_col.blue(), b_alpha), 1.6))
             painter.drawLine(QPointF(bx1, by1), QPointF(bx2, by2))
             
-            peak_r = r_inner + self._spectrum_peaks[i] + 1.8
+            # Peak hold dot with physics decay
+            peak_val = max(cur_h, self._spectrum_peaks[i] * 0.93)
+            self._spectrum_peaks[i] = peak_val
+            peak_r = r_inner + peak_val + 2.0
             px = center_x + peak_r * math.cos(ang)
             py = center_y + peak_r * math.sin(ang)
-            p_alpha = max(0, min(255, int(120 + 130 * (self._spectrum_peaks[i] / 18.0))))
-            painter.setPen(QPen(QColor(glow_col.red(), glow_col.green(), glow_col.blue(), p_alpha), 1.8))
+            p_alpha = max(0, min(255, int(130 + 125 * min(1.0, peak_val / (28.0 * self._zoom_scale)))))
+            painter.setPen(QPen(QColor(glow_col.red(), glow_col.green(), glow_col.blue(), p_alpha), 2.0))
             painter.drawPoint(QPointF(px, py))
 
     def _render_geodesic_wireframes(self, painter: QPainter, cx: float, cy: float, sphere_r: float, primary_col: QColor, glow_col: QColor):

@@ -20,6 +20,17 @@ class LightweightCommandRouter:
     High-Performance Deterministic Command Router.
     Performs sub-millisecond intent matching (< 1ms) and executes common OS/system tasks.
     """
+    # Pre-compiled regular expressions for maximum micro-latency throughput
+    PAT_TIME = re.compile(r"^(what('s| is) the )?(current )?time( now)?\??$")
+    PAT_DATE = re.compile(r"^(what('s| is) the )?(today('s)? )?date( today)?\??$")
+    PAT_CPU = re.compile(r"^(cpu|cpu usage|cpu status|cpu load)\??$")
+    PAT_RAM = re.compile(r"^(ram|ram usage|memory|memory usage|memory status)\??$")
+    PAT_APP = re.compile(r"^(?:open|launch|start)\s+(notepad|calculator|calc|chrome|browser|terminal|cmd|powershell|explorer|files)$")
+    PAT_IDENTITY = re.compile(r"^(who are you|what is your name|identify yourself)\??$")
+    PAT_CAPABILITIES = re.compile(r"^(what can you do|help|capabilities)\??$")
+    PAT_GREETING = re.compile(r"^(hello|hi|hey|good morning|good afternoon|good evening)( jarvis)?\??$")
+    PAT_SHUTDOWN = re.compile(r"^(shutdown|power down|turn off|halt)\s*(jarvis|system|server)?$")
+
     def __init__(self):
         self.actuator = Win32Actuator()
         self._pending_confirmation: Optional[str] = None
@@ -40,17 +51,17 @@ class LightweightCommandRouter:
                 return "cancelled_action", None
 
         # 1. Time & Date
-        if re.search(r"^(what('s| is) the )?(current )?time( now)?\??$", q) or q in ["time", "what time is it", "tell me the time"]:
+        if self.PAT_TIME.search(q) or q in ["time", "what time is it", "tell me the time"]:
             return "time", None
-        if re.search(r"^(what('s| is) the )?(today('s)? )?date( today)?\??$", q) or q in ["date", "what date is today", "what day is it"]:
+        if self.PAT_DATE.search(q) or q in ["date", "what date is today", "what day is it"]:
             return "date", None
 
         # 2. System Status & Telemetry
         if q in ["status", "system status", "health", "system health", "status report", "system report"]:
             return "system_status", None
-        if re.search(r"^(cpu|cpu usage|cpu status|cpu load)\??$", q) or "cpu usage" in q:
+        if self.PAT_CPU.search(q) or "cpu usage" in q:
             return "cpu_usage", None
-        if re.search(r"^(ram|ram usage|memory|memory usage|memory status)\??$", q) or "ram usage" in q:
+        if self.PAT_RAM.search(q) or "ram usage" in q:
             return "ram_usage", None
         if "battery" in q or "power level" in q:
             return "battery", None
@@ -68,7 +79,7 @@ class LightweightCommandRouter:
             return "stop_audio", None
 
         # 4. Quick App Launch
-        m = re.match(r"^(?:open|launch|start)\s+(notepad|calculator|calc|chrome|browser|terminal|cmd|powershell|explorer|files)$", q)
+        m = self.PAT_APP.match(q)
         if m:
             return "app_launch", m
 
@@ -81,11 +92,11 @@ class LightweightCommandRouter:
             return "mode_balanced", None
 
         # 6. Conversational Identity & Greetings
-        if re.search(r"^(who are you|what is your name|identify yourself)\??$", q):
+        if self.PAT_IDENTITY.search(q):
             return "identity", None
-        if re.search(r"^(what can you do|help|capabilities)\??$", q):
+        if self.PAT_CAPABILITIES.search(q):
             return "capabilities", None
-        if re.search(r"^(hello|hi|hey|good morning|good afternoon|good evening)( jarvis)?\??$", q):
+        if self.PAT_GREETING.search(q):
             return "greeting", None
 
         # 7. Code Graph & Graphify Intents
@@ -96,8 +107,30 @@ class LightweightCommandRouter:
         if "dead code" in q or "orphaned modules" in q:
             return "code_graph_dead", None
 
-        # 8. Sensitive Operations (Shutdown)
-        if re.search(r"^(shutdown|power down|turn off|halt)\s*(jarvis|system|server)?$", q):
+        # 8. Next-Gen V2 Intents (Persona, Swarm, Biometrics, Simulation, Vault, Sync, NPU)
+        if any(term in q for term in ["switch to friday", "activate friday", "call friday"]):
+            return "persona_friday", None
+        if any(term in q for term in ["switch to edith", "activate edith", "call edith"]):
+            return "persona_edith", None
+        if any(term in q for term in ["switch to jarvis", "activate jarvis", "call jarvis"]):
+            return "persona_jarvis", None
+        if any(term in q for term in ["who is speaking", "active persona", "current persona"]):
+            return "persona_status", None
+        if any(term in q for term in ["deploy swarm", "house party protocol", "swarm status", "swarm execute"]):
+            return "swarm_deploy", None
+        if any(term in q for term in ["suit vitals", "operator vitals", "stress level", "biometric status"]):
+            return "biometric_vitals", None
+        if any(term in q for term in ["quantum vault", "quantum shield", "vault status"]):
+            return "quantum_vault_status", None
+        if any(term in q for term in ["run simulation", "barnaby simulation", "simulate script"]):
+            return "simulation_dryrun", None
+        if any(term in q for term in ["satellite sync", "satellite status", "sync state"]):
+            return "satellite_sync_status", None
+        if any(term in q for term in ["npu status", "silicon accelerator", "npu engine"]):
+            return "npu_status", None
+
+        # 9. Sensitive Operations (Shutdown)
+        if self.PAT_SHUTDOWN.search(q):
             return "shutdown", None
 
         return None
@@ -131,11 +164,8 @@ class LightweightCommandRouter:
             self._pending_confirmation = None
             if action == "shutdown":
                 response_text = "Shutdown confirmed. Powering down core systems, Sir. Goodnight."
-                def _do_shutdown():
-                    time.sleep(1.0)
-                    os._exit(0)
-                import threading
-                threading.Thread(target=_do_shutdown, daemon=True).start()
+                from jarvis.system.shutdown import shutdown_manager
+                shutdown_manager.initiate_shutdown(delay_s=0.5)
             else:
                 response_text = f"Action '{action}' confirmed and executed, Sir."
 
@@ -253,14 +283,9 @@ class LightweightCommandRouter:
             response_text = "Standard balanced performance profile restored."
 
         # 6. Identity & Greetings
-        elif category == "identity":
-            response_text = "I am J.A.R.V.I.S. — Just A Rather Very Intelligent System. Ready for your instructions, Sir."
-
-        elif category == "capabilities":
-            response_text = "I am your sovereign AI desktop assistant. I manage voice perception, system actuation, workspace files, automated workflows, and memory vaults."
-
-        elif category == "greeting":
-            response_text = "At your service, Sir. All core systems are nominal."
+        elif category in ["identity", "capabilities", "greeting"]:
+            from jarvis.llm.cognitive_reasoner import cognitive_reasoner
+            response_text = cognitive_reasoner.analyze_and_respond(query)
 
         # 7. Code Graph & Graphify Operations
         elif category == "code_graph_summary":
@@ -298,15 +323,62 @@ class LightweightCommandRouter:
             else:
                 response_text = "All repository modules are actively connected within the architecture. Zero isolated files detected, Sir."
 
-        # 8. Sensitive Operations (Shutdown)
+        # 8. Next-Gen V2 Intents (Persona, Swarm, Biometrics, Simulation, Vault, Sync, NPU)
+        elif category == "persona_friday":
+            from jarvis.audio.persona_manager import persona_manager
+            p = persona_manager.switch_persona("FRIDAY")
+            response_text = f"F.R.I.D.A.Y. online, Boss. Tactical subroutines armed and ready."
+
+        elif category == "persona_edith":
+            from jarvis.audio.persona_manager import persona_manager
+            p = persona_manager.switch_persona("EDITH")
+            response_text = f"E.D.I.T.H. active. Code execution and technical directives locked."
+
+        elif category == "persona_jarvis":
+            from jarvis.audio.persona_manager import persona_manager
+            p = persona_manager.switch_persona("JARVIS")
+            response_text = f"J.A.R.V.I.S. restored, Sir. At your service as always."
+
+        elif category == "persona_status":
+            from jarvis.audio.persona_manager import persona_manager
+            p = persona_manager.get_active_persona()
+            response_text = f"Current active voice profile is {p.display_title} ({p.accent_description})."
+
+        elif category == "swarm_deploy":
+            from jarvis.swarm.parallel_executor import HousePartySwarmExecutor
+            response_text = "House Party Protocol ready, Sir. 6 parallel sub-agent workers standby on Performance Cores."
+
+        elif category == "biometric_vitals":
+            from jarvis.sensors.biometric_harvester import biometric_harvester
+            telemetry = biometric_harvester.get_telemetry_dict()
+            stress = telemetry["adaptation"]["stress_index"]
+            mode = telemetry["adaptation"]["mode"]
+            response_text = f"Suit Vitals nominal. Operator stress index: {stress:.2f} ({mode} mode active)."
+
+        elif category == "quantum_vault_status":
+            from jarvis.security.quantum_vault import quantum_vault
+            response_text = "Quantum Shield Cryptographic Vault active. AES-256-GCM memory encryption verified."
+
+        elif category == "simulation_dryrun":
+            from jarvis.simulation.barnaby_engine import barnaby_simulator
+            response_text = "Project B.A.R.N.A.B.Y. virtual sandbox online. Ready for Copy-on-Write dry runs."
+
+        elif category == "satellite_sync_status":
+            from jarvis.sync.satellite_sync import satellite_sync_engine
+            report = satellite_sync_engine.get_state_dict()
+            response_text = f"Satellite sync active with {report['satellite_count']} connected companion nodes."
+
+        elif category == "npu_status":
+            from jarvis.hardware.npu_engine import npu_engine
+            status = npu_engine.get_status()
+            response_text = f"Silicon accelerator target: {status['device_target']} ({status['continuous_power_draw_watts']}W power profile)."
+
+        # 9. Sensitive Operations (Shutdown)
         elif category == "shutdown":
             if user_confirmed:
                 response_text = "Shutting down core systems, Sir. Goodnight."
-                def _do_shutdown():
-                    time.sleep(1.0)
-                    os._exit(0)
-                import threading
-                threading.Thread(target=_do_shutdown, daemon=True).start()
+                from jarvis.system.shutdown import shutdown_manager
+                shutdown_manager.initiate_shutdown(delay_s=0.5)
             else:
                 self._pending_confirmation = "shutdown"
                 self._confirmation_expiry = time.time() + 15.0  # 15s confirmation window

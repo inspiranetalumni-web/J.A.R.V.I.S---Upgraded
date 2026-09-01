@@ -205,6 +205,11 @@ class SkillKnowledgeEngine:
             "connections": connected_modules if connected_modules else [{"default_module": "jarvis/main.py", "mcp_tool": "ConversationalAgent"}]
         }
 
+    @property
+    def acronyms_db(self) -> Dict[str, Any]:
+        """Returns the master Computer Science and domain acronyms database."""
+        return CS_KNOWLEDGE_BASE
+
     def work_on_skills(self, task: str) -> Dict[str, Any]:
         """
         4. WORK ON SKILLS: Dynamically executes connected skill or code tool.
@@ -216,3 +221,7 @@ class SkillKnowledgeEngine:
             "connection_map": conn,
             "action_taken": f"Invoked connected skill module: {conn['connections'][0]['module'] if isinstance(conn.get('connections'), list) and conn.get('connections') else conn.get('connected_module', 'jarvis/main.py')}"
         }
+
+# Global singleton instance
+skill_knowledge_engine = SkillKnowledgeEngine()
+

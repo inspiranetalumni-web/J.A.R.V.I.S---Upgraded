@@ -166,6 +166,7 @@ def test_voice_orb_zoom_and_hover_freeze(qapp):
     event_move = QMouseEvent(
         QMouseEvent.Type.MouseMove,
         QPointF(80, 70),
+        QPointF(80, 70),
         Qt.MouseButton.RightButton,
         Qt.MouseButton.RightButton,
         Qt.KeyboardModifier.NoModifier

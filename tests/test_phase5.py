@@ -20,9 +20,12 @@ def test_win32_actuator():
     assert isinstance(title, str)
     assert len(title) > 0
 
-    # Hotkey test
-    res = actuator.send_hotkey("ctrl", "c")
-    assert isinstance(res, bool)
+    # Key resolution and simulation test (dry_run=True prevents injecting Ctrl+C into running test terminal)
+    res_hotkey = actuator.send_hotkey("ctrl", "c", dry_run=True)
+    assert res_hotkey is True
+
+    res_press = actuator.press_key("enter", dry_run=True)
+    assert res_press is True
 
 def test_security_guardrails():
     """Verify 4-Layer Security Defense System."""

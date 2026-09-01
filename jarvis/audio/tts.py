@@ -205,12 +205,13 @@ class KokoroTTS:
         self._kill_event.set()
         self._is_speaking = False
 
-        # Stop sounddevice output if active
-        try:
-            import sounddevice as sd
-            sd.stop()
-        except Exception:
-            pass
+        # Stop sounddevice output only if audio thread was active
+        if self._active_thread and self._active_thread.is_alive():
+            try:
+                import sounddevice as sd
+                sd.stop()
+            except Exception:
+                pass
 
         print("[TTS] Voice output interrupted via Barge-in signal (<50ms signal target)")
 

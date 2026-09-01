@@ -16,6 +16,7 @@ from jarvis.audio.vad import DualGateVAD
 from jarvis.audio.wakeword import WakeWordDetector
 from jarvis.audio.stt import SpeechTranscriber
 from jarvis.audio.tts import KokoroTTS
+from jarvis.audio.spectrum_analyzer import SpectrumAnalyzer, spectrum_analyzer
 
 class AudioState(Enum):
     LISTENING_WAKE = "LISTENING_WAKE"
@@ -26,7 +27,7 @@ class AudioState(Enum):
 class AudioManager:
     """
     Master Audio Pipeline Manager with decoupled queue architecture, non-blocking ingestion,
-    streaming TTS clause synthesis, and instant full-duplex barge-in interruption.
+    real-time 48-band spectrum analysis, streaming TTS synthesis, and instant full-duplex barge-in.
     """
     def __init__(self, async_mode: bool = False):
         self.ring_buffer = AudioRingBuffer()
@@ -34,6 +35,7 @@ class AudioManager:
         self.wakeword = WakeWordDetector()
         self.stt = SpeechTranscriber()
         self.tts = KokoroTTS()
+        self.spectrum_analyzer = spectrum_analyzer
 
         self.state = AudioState.LISTENING_WAKE
         self.utterance_buffer: List[np.ndarray] = []
@@ -41,7 +43,8 @@ class AudioManager:
         self.max_silence_chunks = 10  # ~800ms silence threshold
 
         self.on_utterance_callback: Optional[Callable[[str], None]] = None
-        self._lock = threading.Lock()
+        self.on_spectrum_callback: Optional[Callable[[Dict[str, Any]], None]] = None
+        self._lock = threading.RLock()
         self._is_active = False
         self._mic_thread = None
 
@@ -50,9 +53,6 @@ class AudioManager:
         self._utterance_queue: queue.Queue[Optional[np.ndarray]] = queue.Queue(maxsize=8)
         self._worker_thread: Optional[threading.Thread] = None
         self._cancel_token = threading.Event()
-
-        if self._async_mode:
-            self._start_utterance_worker()
 
     @property
     def cancel_token(self) -> threading.Event:
@@ -63,16 +63,34 @@ class AudioManager:
         """Registers listener callback for finalized voice transcriptions."""
         self.on_utterance_callback = callback
 
+    def register_on_spectrum_callback(self, callback: Callable[[Dict[str, Any]], None]) -> None:
+        """Registers listener callback for real-time 48-band FFT spectrum frames."""
+        self.on_spectrum_callback = callback
+
+    def get_spectrum_data(self) -> Dict[str, Any]:
+        """Returns the latest 48-band FFT spectrum, RMS volume, and centroid."""
+        return self.spectrum_analyzer.get_spectrum_data()
+
+    def ingest_output_audio_chunk(self, chunk: np.ndarray) -> None:
+        """Ingests outgoing TTS audio chunk for live visualizer spectrum rendering."""
+        spec_data = self.spectrum_analyzer.analyze_pcm_chunk(chunk)
+        if self.on_spectrum_callback:
+            try:
+                self.on_spectrum_callback(spec_data)
+            except Exception:
+                pass
+
     def _start_utterance_worker(self):
         """Starts background worker thread for asynchronous speech transcription."""
         if self._worker_thread and self._worker_thread.is_alive():
             return
 
         def _worker_loop():
-            while self._is_active or self._async_mode:
+            while self._is_active:
                 try:
-                    audio_data = self._utterance_queue.get(timeout=0.1)
+                    audio_data = self._utterance_queue.get(timeout=0.05)
                     if audio_data is None:
+                        self._utterance_queue.task_done()
                         break
                     if len(audio_data) > 0:
                         transcript = self.stt.transcribe(audio_data)
@@ -113,14 +131,29 @@ class AudioManager:
         Non-blocking ingestion with fast RMS & VAD perception (<1ms cost).
         """
         with self._lock:
-            # 1. Ingest into circular ring buffer
+            # 1. Ingest into circular ring buffer & analyze live frequency spectrum
             self.ring_buffer.write(chunk)
+            spec_data = self.spectrum_analyzer.analyze_pcm_chunk(chunk)
+            if self.on_spectrum_callback:
+                try:
+                    self.on_spectrum_callback(spec_data)
+                except Exception:
+                    pass
 
             # 2. Check for Barge-in during active TTS playback
             if self.tts.is_speaking():
                 is_speech, speech_prob = self.vad.is_speech(chunk)
                 if is_speech and speech_prob > 0.60:
                     self.trigger_barge_in()
+                    return {
+                        "state": self.state.value,
+                        "is_speech": True,
+                        "speech_prob": speech_prob,
+                        "wake_score": 0.0,
+                        "wake_detected": False,
+                        "transcript": "",
+                        "is_speaking": False
+                    }
 
             # 3. Perception State Machine Execution
             is_speech, speech_prob = self.vad.is_speech(chunk)
@@ -206,9 +239,15 @@ class AudioManager:
     def stop_mic_listener(self) -> None:
         """Stops background mic thread and worker."""
         self._is_active = False
+        self._async_mode = False
         if self._utterance_queue:
             try:
                 self._utterance_queue.put_nowait(None)
+            except Exception:
+                pass
+        if self._worker_thread and self._worker_thread.is_alive():
+            try:
+                self._worker_thread.join(timeout=0.2)
             except Exception:
                 pass
 

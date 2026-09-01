@@ -38,7 +38,7 @@ class Win32Actuator:
         except Exception:
             return "Active Window"
 
-    def press_key(self, key_name: str) -> bool:
+    def press_key(self, key_name: str, dry_run: bool = False) -> bool:
         """Simulates virtual key press and release via Win32 user32 keybd_event."""
         if not self.is_windows:
             return False
@@ -46,10 +46,16 @@ class Win32Actuator:
         key_lower = key_name.lower()
         vk_code = VK_MAP.get(key_lower)
         if not vk_code and len(key_name) == 1:
-            vk_code = ctypes.windll.user32.VkKeyScanW(ord(key_name)) & 0xFF
+            try:
+                vk_code = ctypes.windll.user32.VkKeyScanW(ord(key_name)) & 0xFF
+            except Exception:
+                vk_code = None
 
         if not vk_code:
             return False
+
+        if dry_run:
+            return True
 
         try:
             # Key down
@@ -61,13 +67,24 @@ class Win32Actuator:
         except Exception:
             return False
 
-    def send_hotkey(self, modifier: str, key: str) -> bool:
+    def send_hotkey(self, modifier: str, key: str, dry_run: bool = False) -> bool:
         """Sends modifier + key combination (e.g. 'ctrl', 'c')."""
         if not self.is_windows:
             return False
 
         mod_vk = VK_MAP.get(modifier.lower(), 0x11)
-        key_vk = VK_MAP.get(key.lower()) or (ctypes.windll.user32.VkKeyScanW(ord(key[0])) & 0xFF)
+        key_vk = VK_MAP.get(key.lower())
+        if not key_vk and len(key) >= 1:
+            try:
+                key_vk = (ctypes.windll.user32.VkKeyScanW(ord(key[0])) & 0xFF)
+            except Exception:
+                key_vk = None
+
+        if not mod_vk or not key_vk:
+            return False
+
+        if dry_run:
+            return True
 
         try:
             ctypes.windll.user32.keybd_event(mod_vk, 0, 0, 0)

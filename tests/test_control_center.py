@@ -9,14 +9,6 @@ import pytest
 from PySide6.QtWidgets import QApplication, QLabel
 from PySide6.QtCore import Qt
 
-# Ensure a QApplication instance is active for headless / offscreen testing
-@pytest.fixture(scope="session")
-def qapp():
-    app = QApplication.instance()
-    if app is None:
-        app = QApplication(["pytest", "-platform", "offscreen"])
-    yield app
-
 def test_state_manager(qapp):
     """Test reactive state management, signal emissions, and escrow handling."""
     from jarvis.control_center.state import ControlCenterStateManager, AssistantState, OperatingMode
@@ -154,6 +146,7 @@ def test_status_card_double_click(qapp):
     # Simulate mouse double-click event
     event = QMouseEvent(
         QMouseEvent.Type.MouseButtonDblClick,
+        QPointF(10, 10),
         QPointF(10, 10),
         Qt.MouseButton.LeftButton,
         Qt.MouseButton.LeftButton,

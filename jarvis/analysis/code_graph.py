@@ -5,6 +5,7 @@ Parses repository Python files using the standard ast module to extract:
 - Directed dependency edges (IMPORTS, CALLS, INHERITS)
 - 3D clustered spherical coordinates for real-time holographic visualization
 - Blast-radius calculation and impact analysis
+Optimized with lazy initialization on first query.
 """
 
 import ast
@@ -13,6 +14,9 @@ import math
 from typing import Dict, List, Any, Optional, Set, Tuple
 from pathlib import Path
 from jarvis.config import config
+from jarvis.logging import get_logger
+
+logger = get_logger("code_graph")
 
 class CodeGraphNode:
     """Represents a code artifact node in the 3D Code Graph."""
@@ -70,6 +74,7 @@ class CodeGraphEdge:
 class CodeGraphEngine:
     """
     Sovereign AST Code Graph Builder that graphifies the J.A.R.V.I.S. codebase.
+    Uses lazy initialization to eliminate import-time overhead.
     """
     CLUSTER_COLORS = {
         "spine": "#00f0ff",       # Cyan
@@ -83,23 +88,37 @@ class CodeGraphEngine:
 
     def __init__(self, root_dir: Optional[str] = None):
         self.root_dir = Path(root_dir or config.root_dir)
-        self.nodes: Dict[str, CodeGraphNode] = {}
-        self.edges: List[CodeGraphEdge] = []
+        self._nodes: Dict[str, CodeGraphNode] = {}
+        self._edges: List[CodeGraphEdge] = []
         self._adjacency: Dict[str, Set[str]] = {}
         self._reverse_adjacency: Dict[str, Set[str]] = {}
-        
-        # Build initial graph
-        self.rebuild_graph()
+        self._is_built = False
+
+    def _ensure_built(self):
+        """Ensures the AST graph is parsed on demand."""
+        if not self._is_built:
+            self.rebuild_graph()
+
+    @property
+    def nodes(self) -> Dict[str, CodeGraphNode]:
+        self._ensure_built()
+        return self._nodes
+
+    @property
+    def edges(self) -> List[CodeGraphEdge]:
+        self._ensure_built()
+        return self._edges
 
     def rebuild_graph(self):
         """Scans jarvis/ directory and constructs the AST graph."""
-        self.nodes.clear()
-        self.edges.clear()
+        self._nodes.clear()
+        self._edges.clear()
         self._adjacency.clear()
         self._reverse_adjacency.clear()
 
         jarvis_dir = self.root_dir / "jarvis"
         if not jarvis_dir.exists():
+            self._is_built = True
             return
 
         py_files = list(jarvis_dir.rglob("*.py"))
@@ -141,10 +160,10 @@ class CodeGraphEngine:
                             "doc": f_doc.split("\n")[0].strip() if f_doc else f"Function {item.name}",
                             "args": args
                         })
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("AST parsing note on %s: %s", rel_path, e)
 
-            self.nodes[mod_id] = CodeGraphNode(
+            self._nodes[mod_id] = CodeGraphNode(
                 node_id=mod_id,
                 label=py_file.stem,
                 node_type="module",
@@ -171,7 +190,6 @@ class CodeGraphEngine:
                 continue
 
             for node in ast.walk(tree):
-                # Check Import statements
                 if isinstance(node, ast.Import):
                     for alias in node.names:
                         target = alias.name
@@ -183,6 +201,8 @@ class CodeGraphEngine:
 
         # Phase 3: Calculate 3D Clustered Spherical Coordinates
         self._calculate_3d_coordinates()
+        self._is_built = True
+        logger.info("AST Code Graph constructed: %d nodes, %d edges", len(self._nodes), len(self._edges))
 
     def _determine_cluster(self, path: str) -> str:
         p = path.lower()
@@ -201,36 +221,33 @@ class CodeGraphEngine:
         return "general"
 
     def _add_edge(self, source: str, target: str, edge_type: str):
-        # Match target to registered node if possible
         matched_target = target
-        if target not in self.nodes:
-            # Try prefix match
-            for n_id in self.nodes:
+        if target not in self._nodes:
+            for n_id in self._nodes:
                 if n_id.startswith(target) or target.startswith(n_id):
                     matched_target = n_id
                     break
         
-        if source in self.nodes and matched_target in self.nodes and source != matched_target:
+        if source in self._nodes and matched_target in self._nodes and source != matched_target:
             edge = CodeGraphEdge(source, matched_target, edge_type)
-            self.edges.append(edge)
+            self._edges.append(edge)
             self._adjacency.setdefault(source, set()).add(matched_target)
             self._reverse_adjacency.setdefault(matched_target, set()).add(source)
 
     def _calculate_3d_coordinates(self):
         """Distributes nodes across 3D spherical clusters with Fibonacci distribution."""
         clusters = {}
-        for node in self.nodes.values():
+        for node in self._nodes.values():
             clusters.setdefault(node.cluster, []).append(node)
 
-        # Cluster Center Latitudes & Longitudes in 3D Space
         cluster_centers = {
-            "spine": (0.0, 0.0),            # Equator Front
-            "cognitive": (math.pi / 3, 0.5), # Northern Front-Right
-            "audio": (-0.2, -math.pi / 2),   # West Equatorial
-            "security": (-math.pi / 3, 0.8), # Southern Front-Right
-            "memory": (math.pi / 4, math.pi),# Northern Back
-            "ui": (0.1, math.pi / 2),        # East Equatorial
-            "general": (-math.pi / 4, -math.pi / 2) # Southern West
+            "spine": (0.0, 0.0),
+            "cognitive": (math.pi / 3, 0.5),
+            "audio": (-0.2, -math.pi / 2),
+            "security": (-math.pi / 3, 0.8),
+            "memory": (math.pi / 4, math.pi),
+            "ui": (0.1, math.pi / 2),
+            "general": (-math.pi / 4, -math.pi / 2)
         }
 
         for cluster_name, nodes in clusters.items():
@@ -238,20 +255,19 @@ class CodeGraphEngine:
             n_count = len(nodes)
             
             for i, node in enumerate(nodes):
-                # Spread nodes locally around cluster center
                 spread_radius = 0.35 + 0.15 * math.sqrt(i / max(1, n_count))
-                ang = i * 2.39996  # Golden angle
+                ang = i * 2.39996
                 
                 lat = center_lat + spread_radius * math.sin(ang) * 0.45
                 lon = center_lon + spread_radius * math.cos(ang) * 0.70
                 
-                # Keep on unit sphere
                 node.x = math.cos(lat) * math.cos(lon)
                 node.y = math.sin(lat)
                 node.z = math.cos(lat) * math.sin(lon)
 
     def get_blast_radius(self, node_id: str) -> Dict[str, Any]:
         """Calculates downstream dependencies and incoming callers for impact analysis."""
+        self._ensure_built()
         downstream = self._adjacency.get(node_id, set())
         callers = self._reverse_adjacency.get(node_id, set())
         
@@ -264,13 +280,14 @@ class CodeGraphEngine:
 
     def get_topological_summary(self) -> Dict[str, Any]:
         """Returns high-level graph topology metrics."""
+        self._ensure_built()
         return {
-            "total_nodes": len(self.nodes),
-            "total_edges": len(self.edges),
-            "clusters": {c: len([n for n in self.nodes.values() if n.cluster == c])
-                         for c in set(n.cluster for n in self.nodes.values())},
-            "root_spine_nodes": [n.node_id for n in self.nodes.values() if n.cluster == "spine"]
+            "total_nodes": len(self._nodes),
+            "total_edges": len(self._edges),
+            "clusters": {c: len([n for n in self._nodes.values() if n.cluster == c])
+                         for c in set(n.cluster for n in self._nodes.values())},
+            "root_spine_nodes": [n.node_id for n in self._nodes.values() if n.cluster == "spine"]
         }
 
-# Global Singleton Instance
+# Global Singleton Instance (Lazy init)
 code_graph_engine = CodeGraphEngine()

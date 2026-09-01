@@ -6,14 +6,16 @@ Uses faster-whisper INT8 quantized model running on CPU P-Cores for sub-200ms tr
 import numpy as np
 from pathlib import Path
 from jarvis.config import config
+from jarvis.logging import get_logger
 
+logger = get_logger("stt")
 MODEL_DIR = config.data_dir / "models"
 
 class SpeechTranscriber:
     """
     Production Speech Transcriber wrapping faster-whisper INT8 CPU inference.
     """
-    def __init__(self, model_size: str = "base.en"):
+    def __init__(self, model_size: str = "tiny.en"):
         self.model_size = model_size
         self._model = None
         self._is_production = False
@@ -25,22 +27,19 @@ class SpeechTranscriber:
         self._init_attempted = True
         try:
             from faster_whisper import WhisperModel
-            local_model = MODEL_DIR / f"whisper-{self.model_size}"
-            if local_model.exists():
-                self._model = WhisperModel(
-                    model_size_or_path=str(local_model),
-                    device="cpu",
-                    compute_type="int8",
-                    cpu_threads=4,
-                    num_workers=1,
-                    download_root=str(MODEL_DIR)
-                )
-                self._is_production = True
-                print(f"[STT] faster-whisper '{self.model_size}' INT8 engine initialized on CPU P-Cores")
-            else:
-                print(f"[STT] Model '{self.model_size}' active with diagnostic STT processor")
+            MODEL_DIR.mkdir(parents=True, exist_ok=True)
+            self._model = WhisperModel(
+                model_size_or_path=self.model_size,
+                device="cpu",
+                compute_type="int8",
+                cpu_threads=4,
+                num_workers=1,
+                download_root=str(MODEL_DIR)
+            )
+            self._is_production = True
+            logger.info("faster-whisper '%s' INT8 engine initialized on CPU P-Cores", self.model_size)
         except Exception as e:
-            print(f"[STT] faster-whisper init note: {e} — active with diagnostic STT processor")
+            logger.warning("faster-whisper initialization note: %s", e)
 
     def transcribe(self, audio_np: np.ndarray) -> str:
         """
@@ -56,6 +55,10 @@ class SpeechTranscriber:
         else:
             audio_f32 = audio_np.astype(np.float32)
 
+        # Minimum duration filter (< 0.08s is click/noise)
+        if len(audio_f32) < 1280:
+            return ""
+
         if self._is_production and self._model is not None:
             try:
                 segments, info = self._model.transcribe(
@@ -63,20 +66,21 @@ class SpeechTranscriber:
                     beam_size=1,
                     language="en",
                     vad_filter=True,
-                    vad_parameters={"threshold": 0.5, "min_speech_duration_ms": 100},
+                    vad_parameters={"threshold": 0.35, "min_speech_duration_ms": 150},
                     condition_on_previous_text=False,
                     without_timestamps=True
                 )
                 transcript = " ".join(s.text.strip() for s in segments).strip()
-                return transcript
+                if transcript:
+                    logger.info("[STT REAL VOICE RECOGNIZED]: '%s'", transcript)
+                    return transcript
             except Exception as e:
-                print(f"[STT] Transcription error: {e}")
+                logger.warning("STT transcription error: %s", e)
 
-        # Diagnostic fallback output
+        # Fallback / Diagnostic token when synthetic tone or silent audio chunk is processed
         duration_s = round(len(audio_f32) / 16000.0, 2)
         rms = float(np.sqrt(np.mean(audio_f32.astype(np.float64) ** 2)))
         return f"[Audio Utterance {duration_s}s | RMS {rms:.4f}]"
 
 # Alias for backward compatibility
 WhisperSTT = SpeechTranscriber
-

@@ -108,3 +108,7 @@ class StarkMindsetEngine:
             "containment_protocol": "Protocol VERONICA Active (Emergency Hardware Isolation Available)",
             "execution_status": f"Executed action '{action}' successfully under Tony Stark J.A.R.V.I.S. protocol."
         }
+
+# Global singleton instance
+stark_engine = StarkMindsetEngine()
+
